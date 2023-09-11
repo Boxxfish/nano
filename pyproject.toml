@@ -7,6 +7,15 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.9"
+torch = "2.0.0"
+numpy = "^1.25.2"
+pillow = "^10.0.0"
+matplotlib = "^3.7.2"
+mypy = "^1.5.1"
+black = "^23.9.1"
+jaxtyping = "^0.2.21"
+types-tqdm = "^4.66.0.2"
+tqdm = "^4.66.1"
 
 
 [build-system]
