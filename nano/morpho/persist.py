@@ -77,7 +77,7 @@ def perform_update(curr_state: torch.Tensor, net: nn.Module) -> torch.Tensor:
         .unsqueeze(1)
     ).to(
         device
-    )  # Shape: (batch_size, 1, sim_size, sim_size)
+    ) < cell_update # Shape: (batch_size, 1, sim_size, sim_size)
     curr_state = curr_state + update * update_mask
     max_a = torch.max_pool2d(curr_state[:, 3, :, :], 3, padding=1, stride=1).unsqueeze(
         1
