@@ -10,19 +10,16 @@ import torch
 from torch import nn
 from matplotlib import pyplot as plt  # type: ignore
 from tqdm import tqdm
+from pathlib import Path
 
 # Params
-img_paths = [
-    "assets/platformer/p1.png",
-    "assets/platformer/p2.png",
-    "assets/platformer/p3.png",
-    "assets/platformer/p4.png",
-]
+base_path = Path("temp/lizard_skeleton")
+img_paths = [path for path in base_path.iterdir()][:30]
 min_train = 64  # Minimum number of training steps.
 max_train = 96  # Maximum number of training steps.
 sim_size = 64  # Size of each dim of sim.
 state_size = 16  # Number of states in a cell, including RGBA.
-dna_size = 4  # Number of elements in the DNA vector.
+dna_size = 16  # Number of elements in the DNA vector.
 cell_update = 0.5  # Probability of a cell being updated.
 train_iters = 100000  # Number of total training iterations.
 min_a_alive = 0.1  # To be considered alive, a cell in the neighborhood's alpha value must be at least this.
@@ -90,7 +87,9 @@ class UpdateNet(nn.Module):
         return update
 
 
-def perform_update(curr_state: torch.Tensor, dna: torch.Tensor, net: nn.Module) -> torch.Tensor:
+def perform_update(
+    curr_state: torch.Tensor, dna: torch.Tensor, net: nn.Module
+) -> torch.Tensor:
     """
     Performs one update step, returning the next state.
     """
@@ -124,14 +123,18 @@ def main():
     for img in imgs:
         img_w, img_h = img.size
         max_size = max(img_w, img_h)
-        new_w = int(sim_size / 2 * (img_w / max_size))
-        new_h = int(sim_size / 2 * (img_h / max_size))
+        new_w = int(sim_size * (img_w / max_size))
+        new_h = int(sim_size * (img_h / max_size))
         paste_x = sim_size // 2 - new_w // 2
         paste_y = sim_size // 2 - new_h // 2
         img = img.resize((new_w, new_h))
         final_img = Image.new("RGBA", (sim_size, sim_size))
         final_img.paste(img, (paste_x, paste_y))
-        final_img_arrs.append(np.array(final_img).transpose((2, 0, 1)) / 255)
+        final_img_arr = np.array(final_img).transpose((2, 0, 1)) / 255
+        alpha_mask = (final_img_arr[3] > 0.5).reshape((1, sim_size, sim_size)).astype(float)
+        final_img_arr = final_img_arr * alpha_mask
+        final_img_arr[3] = alpha_mask
+        final_img_arrs.append(final_img_arr)
     final_img_arrs = np.stack(final_img_arrs)
 
     if args.eval:
@@ -141,7 +144,13 @@ def main():
         enc_net.load_state_dict(torch.load("temp/enc_net.pt"))
 
         with torch.no_grad():
-            final = torch.from_numpy(final_img_arrs[int(args.pic)]).unsqueeze(0).to(device)
+            ax = plt.subplot()
+            final = (
+                torch.from_numpy(final_img_arrs[int(args.pic)]).unsqueeze(0).to(device)
+            )
+            ax.set_facecolor("gray")
+            ax.imshow(final_img_arrs[int(args.pic)][:4].transpose(1, 2, 0))
+            plt.show()
             seed = torch.zeros((1, state_size), device=device)
             seed[:, 3:] = 1.0
             dna = (
@@ -149,14 +158,16 @@ def main():
                 .reshape(1, dna_size, 1, 1)
                 .repeat(1, 1, sim_size, sim_size)
             )  # Shape: (1, dna_size, sim_size, sim_size)
-            curr_state = torch.zeros(
-                (1, sim_size, sim_size, state_size), device=device
-            )
+            curr_state = torch.zeros((1, sim_size, sim_size, state_size), device=device)
             curr_state[:, sim_size // 2, sim_size // 2] = seed
-            curr_state = curr_state.permute(0, 3, 1, 2)  # Shape: (1, state_size, sim_size, sim_size)
-            for i in tqdm(range(64)):
+            curr_state = curr_state.permute(
+                0, 3, 1, 2
+            )  # Shape: (1, state_size, sim_size, sim_size)
+            for i in tqdm(range(max_train)):
                 curr_state = perform_update(curr_state, dna, net)
-                plt.imshow(
+                ax = plt.subplot()
+                ax.set_facecolor("gray")
+                ax.imshow(
                     np.clip(curr_state[0][:4].permute(1, 2, 0).cpu().numpy(), 0.0, 1.0)
                 )
                 plt.savefig(f"temp/generated/dna/{i}.png")
@@ -184,7 +195,9 @@ def main():
             (batch_size, sim_size, sim_size, state_size), device=device
         )
         curr_state[:, sim_size // 2, sim_size // 2] = seed
-        curr_state = curr_state.permute(0, 3, 1, 2)  # Shape: (batch_size, state_size, sim_size, sim_size)
+        curr_state = curr_state.permute(
+            0, 3, 1, 2
+        )  # Shape: (batch_size, state_size, sim_size, sim_size)
         for _ in range(random.randrange(min_train, max_train)):
             curr_state = perform_update(curr_state, dna, net)
 
