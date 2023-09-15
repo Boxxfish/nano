@@ -13,7 +13,7 @@ from tqdm import tqdm
 import torch.utils.checkpoint
 
 # Params
-img_path = "assets/platformer/p1.png"
+img_path = "temp/cat.png"
 min_train = 64  # Minimum number of training steps.
 max_train = 96  # Maximum number of training steps.
 state_size = 16  # Number of states in a cell, including RGBA.
@@ -21,10 +21,10 @@ cell_update = 0.5  # Probability of a cell being updated.
 train_iters = 4000  # Number of total training iterations.
 min_a_alive = 0.1  # To be considered alive, a cell in the neighborhood's alpha value must be at least this.
 pool_size = 1024  # Number of items in the pool.
-batch_size = 1  # Number of items per batch.
-chunk_size = 16  # Size of each chunk. This is the size of the input passed to the net.
+batch_size = 4  # Number of items per batch.
+chunk_size = 64  # Size of each chunk. This is the size of the input passed to the net.
 chunks_per_side = 4  # Number of chunks per side.
-segment_size = 4  # Number of times the sim will run before gradient checkpointing.
+segment_size = 8  # Number of times the sim will run before gradient checkpointing.
 device = torch.device("cuda")
 
 
@@ -84,9 +84,13 @@ def perform_update(
                     y_min:y_max,
                     x_min:x_max,
                 ]
-                .float()
-                .to(device)
             )
+
+            # Skip if cell is empty
+            if curr_state_chunk.count_nonzero() == 0:
+                continue
+
+            curr_state_chunk = curr_state_chunk.float().to(device)
 
             grad_x = nn.functional.conv2d(
                 curr_state_chunk, sobel_x, groups=state_size, padding=1
@@ -189,19 +193,26 @@ def main():
     # Train
     net = UpdateNet(state_size).to(device)
     opt = torch.optim.Adam(net.parameters(), lr=0.001)
-    final = (
-        torch.from_numpy(final_img_arr)
-        .unsqueeze(0)
-        .repeat(batch_size, 1, 1, 1)
-        .to(device)
-    )
     pool = np.stack([seed_arr for _ in range(pool_size)], 0)
     pool_losses = np.zeros((pool_size,))
     for i in tqdm(range(train_iters)):
+        # Set batch size to 1 at beginning to encourage rules to start being applied
+        if i < 100:
+            iter_batch_size = 1
+        else:
+            iter_batch_size = batch_size
+
+        final = (
+            torch.from_numpy(final_img_arr)
+            .unsqueeze(0)
+            .repeat(iter_batch_size, 1, 1, 1)
+            .to(device)
+        )
+
         # Sample a batch from the pool
         idxs = list(range(pool_size))
         random.shuffle(idxs)
-        pool_idxs = np.array(idxs[:batch_size])
+        pool_idxs = np.array(idxs[:iter_batch_size])
         curr_state = pool[pool_idxs]
 
         # Replace the sample with the highest loss with the seed state
@@ -213,17 +224,22 @@ def main():
             curr_state
         )  # Shape: (batch_size, state_size, sim_size, sim_size)
         for _ in tqdm(range(random.randrange(min_train, max_train) // segment_size)):
-            curr_state = torch.utils.checkpoint.checkpoint(
-                gen_forward(segment_size),
-                curr_state.clone(),
-                net,
-                sobel_x,
-                sobel_y,
-                torch.ones([1], requires_grad=True),
-            )
+            try:
+                curr_state = torch.utils.checkpoint.checkpoint(
+                    gen_forward(segment_size),
+                    curr_state.clone(),
+                    net,
+                    sobel_x,
+                    sobel_y,
+                    torch.ones([1], requires_grad=True),
+                )
+            except KeyboardInterrupt:
+                quit()
+            except:
+                print("No gradient. Ignoring...")
 
         opt.zero_grad()
-        total_losses = torch.zeros([batch_size]).to(device)
+        total_losses = torch.zeros([iter_batch_size]).to(device)
         for y in range(chunks_per_side):
             for x in range(chunks_per_side):
                 cmp_state = curr_state[
