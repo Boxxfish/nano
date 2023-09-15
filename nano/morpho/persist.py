@@ -163,10 +163,11 @@ def main():
         # Add back outputs to pool
         pool[pool_idxs] = curr_state.detach().cpu().numpy()
         pool_losses[pool_idxs] = loss.detach().cpu().numpy()
-        print(pool_losses)
-
-    # Save network
-    torch.save(net.cpu().state_dict(), "temp/net.pt")
+        
+        # Save network
+        if (i + 1) % 100 == 0:
+            torch.save(net.cpu().state_dict(), "temp/net.pt")
+            net.to(device)
 
 
 if __name__ == "__main__":
