@@ -66,6 +66,10 @@ def perform_update(curr_state: torch.Tensor, net: nn.Module) -> torch.Tensor:
     """
     Performs one update step, returning the next state.
     """
+    max_a = torch.max_pool2d(curr_state[:, 3, :, :], 3, padding=1, stride=1).unsqueeze(
+        1
+    )  # Size: (1, 1, sim_size, sim_size)
+    mask_a = max_a > min_a_alive
     update = net(curr_state)
     update_mask = (
         torch.distributions.Uniform(0.0, 1.0)
@@ -74,10 +78,6 @@ def perform_update(curr_state: torch.Tensor, net: nn.Module) -> torch.Tensor:
         .unsqueeze(0)
     ).to(device) < cell_update # Shape: (1, 1, sim_size, sim_size)
     curr_state = curr_state + update * update_mask
-    max_a = torch.max_pool2d(curr_state[:, 3, :, :], 3, padding=1, stride=1).unsqueeze(
-        1
-    )  # Size: (1, 1, sim_size, sim_size)
-    mask_a = max_a > min_a_alive
     curr_state = curr_state * mask_a
     return curr_state
 

@@ -1,5 +1,5 @@
 """
-This experiment extends the Neural DNA experiment to incorporate transence via
+This experiment extends the Neural DNA experiment to incorporate persistence via
 a pool of previous states. Note that this experiment doesn't keep track of the
 final image of each item in the pool, in theory allowing any configuration of
 cells to transform into any other configuration.
@@ -13,6 +13,8 @@ from torch import nn
 from matplotlib import pyplot as plt  # type: ignore
 from tqdm import tqdm
 from pathlib import Path
+
+from nano.morpho.shared import perform_update
 
 # Params
 base_path = Path("temp/lizard_skeleton")
@@ -90,30 +92,6 @@ class UpdateNet(nn.Module):
         return update
 
 
-def perform_update(
-    curr_state: torch.Tensor, dna: torch.Tensor, net: nn.Module
-) -> torch.Tensor:
-    """
-    Performs one update step, returning the next state.
-    """
-    update = net(curr_state, dna)
-    update_mask = (
-        torch.distributions.Uniform(0.0, 1.0)
-        .sample(torch.Size((sim_size, sim_size)))
-        .unsqueeze(0)
-        .unsqueeze(0)
-    ).to(
-        device
-    ) < cell_update  # Shape: (1, 1, sim_size, sim_size)
-    curr_state = curr_state + update * update_mask
-    max_a = torch.max_pool2d(curr_state[:, 3, :, :], 3, padding=1, stride=1).unsqueeze(
-        1
-    )  # Size: (1, 1, sim_size, sim_size)
-    mask_a = max_a > min_a_alive
-    curr_state = curr_state * mask_a
-    return curr_state
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--eval", action="store_true")
@@ -181,7 +159,7 @@ def main():
                     0, 3, 1, 2
                 )  # Shape: (1, state_size, sim_size, sim_size)
                 for i in tqdm(range(max_train)):
-                    curr_state = perform_update(curr_state, dna, net)
+                    curr_state = perform_update(curr_state, dna, net, min_a_alive, sim_size, cell_update, device)
                     ax = plt.subplot()
                     ax.set_facecolor("gray")
                     ax.imshow(
@@ -222,7 +200,7 @@ def main():
                 )  # Shape: (1, state_size, sim_size, sim_size)
                 print("Generating config 1...")
                 for i in tqdm(range(max_train)):
-                    curr_state = perform_update(curr_state, dna1, net)
+                    curr_state = perform_update(curr_state, dna1, net, min_a_alive, sim_size, cell_update, device)
                     ax = plt.subplot()
                     ax.set_facecolor("gray")
                     ax.imshow(
@@ -234,7 +212,7 @@ def main():
 
                 print("Transitioning to config 2...")
                 for i in tqdm(range(max_train)):
-                    curr_state = perform_update(curr_state, dna2, net)
+                    curr_state = perform_update(curr_state, dna2, net, min_a_alive, sim_size, cell_update, device)
                     ax = plt.subplot()
                     ax.set_facecolor("gray")
                     ax.imshow(
@@ -277,7 +255,7 @@ def main():
             device
         )  # Shape: (batch_size, state_size, sim_size, sim_size)
         for _ in range(random.randrange(min_train, max_train)):
-            curr_state = perform_update(curr_state, dna, net)
+            curr_state = perform_update(curr_state, dna, net, min_a_alive, sim_size, cell_update, device)
 
         cmp_state = curr_state[:, :4, :, :]
         opt.zero_grad()

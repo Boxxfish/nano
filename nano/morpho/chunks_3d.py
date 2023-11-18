@@ -104,6 +104,13 @@ def perform_update(
 
                 curr_state_chunk = curr_state_chunk.float().to(device)
 
+                max_a = torch.max_pool3d(
+                    curr_state_chunk[:, 0, :, :, :], 3, padding=1, stride=1
+                ).unsqueeze(
+                    1
+                )  # Size: (batch_size, 1, chunk_size, chunk_size, chunk_size)
+                mask_a = max_a > min_a_alive
+
                 grad_x = nn.functional.conv3d(
                     curr_state_chunk, sobel_x, groups=state_size, padding=1
                 )
@@ -134,12 +141,6 @@ def perform_update(
                     device
                 ) < cell_update  # Shape: (batch_size, 1, chunk_size + padding, chunk_size + padding, chunk_size + padding)
                 curr_state_chunk = curr_state_chunk + update * update_mask
-                max_a = torch.max_pool3d(
-                    curr_state_chunk[:, 0, :, :, :], 3, padding=1, stride=1
-                ).unsqueeze(
-                    1
-                )  # Size: (batch_size, 1, chunk_size, chunk_size, chunk_size)
-                mask_a = max_a > min_a_alive
                 curr_state_chunk = curr_state_chunk * mask_a
                 new_curr_state[
                     :, :, c_z_min:c_z_max, c_y_min:c_y_max, c_x_min:c_x_max
