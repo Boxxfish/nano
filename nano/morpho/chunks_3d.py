@@ -21,13 +21,13 @@ min_train = 16  # Minimum number of training steps.
 max_train = 32  # Maximum number of training steps.
 state_size = 16  # Number of states in a cell, including RGBA.
 cell_update = 0.5  # Probability of a cell being updated.
-train_iters = 10000  # Number of total training iterations.
+train_iters = 100000  # Number of total training iterations.
 min_a_alive = 0.1  # To be considered alive, a cell in the neighborhood's alpha value must be at least this.
 pool_size = 64  # Number of items in the pool.
 batch_size = 4  # Number of items per batch.
 chunk_size = 32  # Size of each chunk. This is the size of the input passed to the net.
 chunks_per_side = 1  # Number of chunks per side.
-segment_size = 8  # Number of times the sim will run before gradient checkpointing.
+segment_size = 4  # Number of times the sim will run before gradient checkpointing.
 device = torch.device("cuda")
 
 
